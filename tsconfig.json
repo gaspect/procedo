@@ -1,0 +1,40 @@
+{
+    "compilerOptions": {
+        /* Lenguaje y Ambiente */
+        "target": "ES2023",
+        "lib": [
+            "ES2023"
+        ],
+        "module": "ESNext",
+        "moduleResolution": "bundler",
+        /* Emisión */
+        "declaration": true,
+        "declarationMap": true,
+        "sourceMap": true,
+        "outDir": "./dist",
+        "removeComments": true,
+        "esModuleInterop": true,
+        "forceConsistentCasingInFileNames": true,
+        /* Chequeo de Tipos */
+        "strict": true,
+        "noUnusedLocals": true,
+        "noUnusedParameters": true,
+        "noFallthroughCasesInSwitch": true,
+        "noImplicitReturns": true,
+        "skipLibCheck": true,
+        /* Interoperabilidad */
+        "allowSyntheticDefaultImports": true,
+        "resolveJsonModule": true,
+        "isolatedModules": true
+    },
+    "include": [
+        "src/**/*",
+        "test/handlers.ts"
+    ],
+    "exclude": [
+        "node_modules",
+        "dist",
+        "**/*.spec.ts",
+        "**/*.test.ts"
+    ]
+}

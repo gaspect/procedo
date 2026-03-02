@@ -1,0 +1,38 @@
+{
+  "name": "procedo",
+  "version": "1.0.0",
+  "description": "Módulo reutilizable TypeScript",
+  "type": "module",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "pnpm run clean && pnpm run build",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.30.3",
+  "devDependencies": {
+    "@types/pg": "^8.16.0",
+    "pg": "^8.19.0",
+    "typescript": "^5.7.3"
+  },
+  "dependencies": {
+    "tsx": "^4.21.0"
+  }
+}
