@@ -5,12 +5,11 @@ A type-safe, fluent TypeScript container for executing procedures and handlers w
 ## Features
 
 - 🔒 **Type-Safe**: Full TypeScript support with generic type inference
-- 🎯 **Fluent API**: Chain calls with `.register().as<I, O>().using(factory)`
-- 🔌 **Middleware Support**: Chain middleware with full type inference via `.middleware()`
+- 🔄 **Fluent API**: Chain calls with `.using(factory).register().middleware()`
+- 🔌 **Global Config**: Set global middleware and default factory directly on the container
 - ⚡ **Proxy Pattern**: Access procedures as properties: `app.procedureName()`
 - 🎭 **Immutable Containers**: Each registration returns a new typed container
-- ⛔ **Cancellation Tokens**: Built-in support for operation cancellation
-- 🔄 **Adapter Pattern**: Multiple adapters for different use cases (`api`, `using`, `middleware`, `jscriptify`)
+- ⛔ **Cancellation & Compensations**: Built-in support for Saga-like rollback tasks
 - 🐫 **CamelCase Converter**: Access snake_case procedures with camelCase via `jscriptify()`
 - 🗃️ **Database Agnostic**: Works with any database or handler implementation
 
@@ -66,9 +65,8 @@ const customHandler = (name: string) => async (input: any) => {
 
 // Create a type-safe container
 const app = api(container())
-  .register('my_procedure')
-  .as<{ userId: number }, { success: boolean }>()
-  .using(customHandler);
+  .using(customHandler)
+  .register('my_procedure');
 
 // Call as a method
 const result = await app.my_procedure({ userId: 123 });
@@ -99,9 +97,8 @@ type Migration = {
 // Create a container with type-safe procedure registration
 // PostgreSQL procedures use snake_case naming convention
 const app = api(container())
-  .register('get_migrations')  // snake_case for PostgreSQL
-  .as<undefined, Migration[]>()
-  .using(postgres(pool));
+  .using(postgres(pool))
+  .register<undefined, Migration[]>('get_migrations');
 
 // Call procedures as methods
 const migrations = await app.get_migrations();
@@ -117,9 +114,8 @@ import { jscriptify } from 'procedo';
 
 // Works with snake_case procedures (common in databases)
 const app = api(container())
-  .register('get_migration_history')  // snake_case
-  .as<void, Migration[]>()
-  .using(someHandler);
+  .using(someHandler)
+  .register<void, Migration[]>('get_migration_history');
 
 // Access with camelCase
 const jsApi = jscriptify(app);
@@ -127,9 +123,8 @@ const history = await jsApi.getMigrationHistory();
 
 // Also works if procedures are registered in camelCase
 const app2 = api(container())
-  .register('getUserProfile')  // camelCase
-  .as<number, Profile>()
-  .using(someHandler);
+  .using(someHandler)
+  .register<number, Profile>('getUserProfile');
 
 const jsApi2 = jscriptify(app2);
 const profile = await jsApi2.getUserProfile(123);  // Works!
@@ -149,36 +144,31 @@ const c = container();
 
 ### API Adapter
 
-The `api()` adapter wraps a container and provides property-based access to procedures via JavaScript Proxy.
+The `api()` adapter wraps a container and provides a fluent interface for registration and property-based access via JavaScript Proxy.
 
 ```typescript
 import { api, container } from 'procedo';
 
 const app = api(container())
-  .register('myProcedure')
-  .as<InputType, OutputType>()
-  .using(someHandler);
+  .using(someHandler)
+  .register<InputType, OutputType>('myProcedure');
 
 // Call as a method
 const result = await app.myProcedure(input);
 ```
 
-### Using Adapter
+### Global Configuration
 
-The `using()` adapter provides a default factory so you don't need to pass it on every registration.
+You can set a default factory or global middleware that applies to all subsequent registrations:
 
 ```typescript
-import { using, api, container } from 'procedo';
-
-const app = using(api(container()), someHandler)
-  .register('procedure_one')
-  .as<void, string[]>()
-  .register('procedure_two')
-  .as<number, boolean>();
-
-// Factory is applied automatically
-const result1 = await app.procedure_one();
-const result2 = await app.procedure_two(42);
+const app = api(container())
+  .using(defaultHandler)
+  .middleware(globalLogger)
+  .register('proc1') // uses defaultHandler + globalLogger
+  .register('proc2') // uses defaultHandler + globalLogger
+  .using(specialHandler)
+  .register('proc3'); // uses specialHandler + globalLogger
 ```
 
 ## API Reference
@@ -192,55 +182,23 @@ Creates a new immutable container instance.
 **Methods:**
 - `register(name: string)` - Returns a builder to configure the procedure
 - `execute(name: string, input?: any)` - Executes a registered procedure
-- `as<I, O>()` - Re-types the last registered procedure
 
 ### `api<T>(source: ContainerLike<T>)`
 
-Wraps a container with a Proxy to enable property-based access.
+Wraps a container with a Proxy to enable property-based access and provides global configuration methods.
+
+**Methods:**
+- `.using(factory)` - Sets the default handler factory
+- `.middleware(mw)` - Adds a global middleware layer
+- `.register(name)` - Starts registration of a new procedure
 
 **Example:**
 ```typescript
 const app = api(container())
-  .register('get_users')
-  .as<void, User[]>()
-  .using(someHandler);
+  .using(someHandler)
+  .middleware(logger)
+  .register<void, User[]>('get_users');
 
-const users = await app.get_users();
-```
-
-### `using<T>(source: ContainerLike<T>, factory: HandlerFactory)`
-
-Wraps a container with a default handler factory, so you don't need to pass it on every `.using()`.
-
-**Example:**
-```typescript
-const app = using(api(container()), someHandler)
-  .register('get_orders')
-  .as<string, Order[]>();
-
-const orders = await app.get_orders('2024-01');
-```
-
-### `middleware<T>(source: ContainerLike<T>, mw: Middleware)`
-
-Wraps a container with a default middleware that applies to all procedures.
-
-**Example:**
-```typescript
-const loggingMw: Middleware = async (input, next, token) => {
-  console.log('Before:', input);
-  const result = await next(input);
-  console.log('After:', result);
-  return result;
-};
-
-const app = middleware(api(container()), loggingMw)
-  .middleware(timingMw)       // chain additional global layers
-  .register('get_users')
-  .as<void, User[]>()
-  .using(someHandler);
-
-// loggingMw → timingMw applied automatically to all procedures
 const users = await app.get_users();
 ```
 
@@ -264,8 +222,7 @@ When you call `jsApi.getUserOrders()`, it will:
 **Example with snake_case procedures:**
 ```typescript
 const app = api(container())
-  .register('get_user_orders')  // snake_case (common in databases)
-  .as<number, Order[]>()
+  .register<number, Order[]>('get_user_orders')
   .using(someHandler);
 
 const jsApi = jscriptify(app);
@@ -277,8 +234,7 @@ const orders = await jsApi.getUserOrders(userId);
 **Example with camelCase procedures:**
 ```typescript
 const app = api(container())
-  .register('getUserOrders')  // camelCase
-  .as<number, Order[]>()
+  .register<number, Order[]>('getUserOrders')
   .using(someHandler);
 
 const jsApi = jscriptify(app);
@@ -318,8 +274,7 @@ import { postgres } from 'procedo';
 const pool = new Pool({...});
 
 const app = api(container())
-  .register('get_users')
-  .as<void, User[]>()
+  .register<void, User[]>('get_users')
   .using(postgres(pool));
 ```
 
@@ -340,26 +295,21 @@ const loggingMiddleware: Middleware = async (input, next, token) => {
 };
 
 const app = api(container())
-  .register('create_user')
-  .as<UserInput, User>()
+  .register<UserInput, User>('create_user')
   .middleware(loggingMiddleware)  // Apply to this procedure only
   .using(someHandler);
 ```
 
 ### Global Middleware
 
-Use the `middleware()` adapter to apply middleware to all procedures:
+Use `.middleware()` on the `api()` instance to apply middleware to all procedures registered afterwards:
 
 ```typescript
-import { middleware } from 'procedo';
-
-const app = middleware(api(container()), loggingMiddleware)
-  .register('create_user')
-  .as<UserInput, User>()
+const app = api(container())
+  .middleware(loggingMiddleware)
   .using(someHandler)
-  .register('update_user')
-  .as<UserUpdate, User>()
-  .using(someHandler);
+  .register<UserInput, User>('create_user')
+  .register<UserUpdate, User>('update_user');
 
 // loggingMiddleware is applied to both procedures
 ```
@@ -369,25 +319,12 @@ const app = middleware(api(container()), loggingMiddleware)
 Chain `.middleware()` calls to add multiple global layers:
 
 ```typescript
-const timingMiddleware: Middleware = async (input, next, token) => {
-  const start = Date.now();
-  const result = await next(input);
-  console.log(`Executed in ${Date.now() - start}ms`);
-  return result;
-};
-
-const authMiddleware: Middleware = async (input, next, token) => {
-  console.log('Authenticating...');
-  return await next(input);
-};
-
-// Chain global middlewares — each wraps the previous
-const app = middleware(api(container()), loggingMiddleware)
+const app = api(container())
+  .middleware(loggingMiddleware)
   .middleware(timingMiddleware)
   .middleware(authMiddleware)
-  .register('create_user')
-  .as<UserInput, User>()
-  .using(someHandler);
+  .using(someHandler)
+  .register<UserInput, User>('create_user');
 
 // Execution order: loggingMiddleware → timingMiddleware → authMiddleware → handler
 ```
@@ -398,14 +335,12 @@ Combine global and per-procedure middleware:
 
 ```typescript
 // Global logging + timing for all procedures
-const base = middleware(api(container()), loggingMiddleware)
-  .middleware(timingMiddleware);
-
-const app = base
-  .register('create_user')
-  .as<UserInput, User>()
-  .middleware(validationMiddleware)  // Add validation to this one only
-  .using(someHandler);
+const app = api(container())
+  .middleware(loggingMiddleware)
+  .middleware(timingMiddleware)
+  .using(someHandler)
+  .register<UserInput, User>('create_user')
+  .middleware(validationMiddleware); // Add validation to this one only
 
 // Execution order: loggingMiddleware → timingMiddleware → validationMiddleware → handler
 ```
@@ -416,8 +351,7 @@ Chain multiple `.middleware()` calls to build a multi-layer middleware pipeline.
 
 ```typescript
 const app = api(container())
-  .register('complexAuth')
-  .as<number, string>()  // Handler: number → string
+  .register<number, string>('complexAuth')
   // Layer 3 (innermost): next = handler → (number) => Promise<string>
   .middleware(async (input: number, next, _) => {
     const raw = await next(input);  // raw: string ✓
@@ -448,7 +382,7 @@ await app.complexAuth({ token: 'secret', userId: '99' });
 // 7. Layer 1: Returns "AUTHENTICATED: [USER_99]"
 ```
 
-**Why innermost first?** TypeScript processes types left-to-right. The first `.middleware()` call has its `next` anchored to the handler types from `.as<I, O>()`. Each subsequent call knows the previous middleware's types, so `next` is always fully resolved — no manual typing needed.
+**Why innermost first?** TypeScript processes types left-to-right. The first `.middleware()` call has its `next` anchored to the handler types from `.register<I, O>()`. Each subsequent call knows the previous middleware's types, so `next` is always fully resolved — no manual typing needed.
 
 ### Pre-Typed Middleware Variables
 
@@ -478,8 +412,7 @@ const authLayer: Middleware<
 };
 
 const app = api(container())
-  .register('process_user')
-  .as<number, { name: string }>()  // Handler types
+  .register<number, { name: string }>('process_user')
   .middleware(validationLayer)       // inner first
   .middleware(authLayer)             // outer wraps it
   .using(userHandler);
@@ -491,8 +424,8 @@ await app.process_user({ userId: '123', token: 'valid' });
 TypeScript ensures at compile time:
 - `authLayer.NextI` matches `validationLayer.I` ✓
 - `authLayer.NextO` matches `validationLayer.O` ✓
-- `validationLayer.NextI` matches handler input from `.as<>()` ✓
-- `validationLayer.NextO` matches handler output from `.as<>()` ✓
+- `validationLayer.NextI` matches handler input from `.register<>()` ✓
+- `validationLayer.NextO` matches handler output from `.register<>()` ✓
 
 ### Custom Middleware
 
@@ -541,8 +474,7 @@ Transform the input before it reaches the handler:
 ```typescript
 // Handler expects a number
 const app = api(container())
-  .register('getUserData')
-  .as<number, UserData>()
+  .register<number, UserData>('getUserData')
   .middleware<{ userId: number; metadata: string }>(
     async (input, next, token) => {
       // Receive { userId, metadata }, pass only userId to handler
@@ -562,8 +494,7 @@ Transform the output from the handler:
 ```typescript
 // Handler returns raw data
 const app = api(container())
-  .register('fetchData')
-  .as<number, RawData>()
+  .register<number, RawData>('fetchData')
   .middleware<number, FormattedResponse>(
     async (input, next, token) => {
       const rawData = await next(input);
@@ -591,8 +522,7 @@ type RequestPayload = { userId: number; options: Options };
 type ResponseEnvelope = { success: boolean; data: UserData };
 
 const app = api(container())
-  .register('getUser')
-  .as<number, UserData>()  // Handler types
+  .register<number, UserData>('getUser')
   .middleware<RequestPayload, ResponseEnvelope>(
     async (input, next, token) => {
       // Transform input: extract userId
@@ -643,8 +573,7 @@ const apiMiddleware: Middleware<
 };
 
 const app = api(container())
-  .register('get_user_data')
-  .as<number, UserData>()
+  .register<number, UserData>('get_user_data')
   .middleware(apiMiddleware)
   .using(postgres(pool));
 
@@ -675,8 +604,7 @@ const customHandler: HandlerFactory = (name: string) => {
 };
 
 const app = api(container())
-  .register('my_operation')
-  .as<Input, Output>()
+  .register<Input, Output>('my_operation')
   .using(customHandler);
 ```
 
@@ -691,8 +619,7 @@ import { postgres } from 'procedo';
 const pool = new Pool({ /* config */ });
 
 const app = api(container())
-  .register('get_users')
-  .as<void, User[]>()
+  .register<void, User[]>('get_users')
   .using(postgres(pool));
 ```
 
@@ -728,15 +655,10 @@ $$ LANGUAGE plpgsql;
 
 ```typescript
 const app = api(container())
-  .register('get_users')
-  .as<void, User[]>()
   .using(someHandler)
-  .register('get_user')
-  .as<number, User>()
-  .using(someHandler)
-  .register('create_user')
-  .as<UserInput, User>()
-  .using(someHandler);
+  .register<void, User[]>('get_users')
+  .register<number, User>('get_user')
+  .register<UserInput, User>('create_user');
 
 const allUsers = await app.get_users();
 const user = await app.get_user(1);
@@ -751,12 +673,12 @@ const user2 = await jsApi.getUser(1);
 ### Using with Default Factory
 
 ```typescript
-const db = using(api(container()), someHandler);
+const db = api(container()).using(someHandler);
 
 const app = db
-  .register('get_users').as<void, User[]>()
-  .register('get_orders').as<number, Order[]>()
-  .register('get_products').as<void, Product[]>();
+  .register<void, User[]>('get_users')
+  .register<number, Order[]>('get_orders')
+  .register<void, Product[]>('get_products');
 
 const users = await app.get_users();
 const orders = await app.get_orders(userId);
@@ -768,8 +690,7 @@ const products = await app.get_products();
 ```typescript
 // TypeScript infers the return type automatically
 const app = api(container())
-  .register('get_user')
-  .as<number, { id: number; name: string }>()
+  .register<number, { id: number; name: string }>('get_user')
   .using(someHandler);
 
 // result is typed as { id: number; name: string }
@@ -782,15 +703,10 @@ console.log(result.name); // ✅ Type-safe
 ```typescript
 // Your procedures use snake_case (common in databases)
 const app = api(container())
-  .register('get_user_profile')
-  .as<number, UserProfile>()
   .using(someHandler)
-  .register('list_active_orders')
-  .as<void, Order[]>()
-  .using(someHandler)
-  .register('update_user_settings')
-  .as<SettingsInput, Settings>()
-  .using(someHandler);
+  .register<number, UserProfile>('get_user_profile')
+  .register<void, Order[]>('list_active_orders')
+  .register<SettingsInput, Settings>('update_user_settings');
 
 // Convert to JavaScript/TypeScript naming convention
 const jsApi = jscriptify(app);
@@ -815,8 +731,7 @@ type Input = { userId: number; year: number };
 type Output = { total: number; currency: string };
 
 const app = api(container())
-  .register('get_order_total')
-  .as<Input, Output>()
+  .register<Input, Output>('get_order_total')
   .using(someHandler);
 
 // ✅ Type-safe input
@@ -829,51 +744,99 @@ console.log(result.total.toFixed(2));
 // console.log(result.invalid);
 ```
 
-## Error Handling
+## Cancellation & Compensation Tasks (Saga Pattern)
 
-Use middleware for error handling and compensation logic:
+Procedo provides a built-in mechanism for handling operation cancellation and performing compensation tasks (similar to the Saga pattern) when an error occurs or a process is aborted.
+
+### CancellationToken
+
+Every handler and middleware receives a `CancellationToken` as its last argument. This token allows you to register cleanup tasks, check for cancellation state, or manually trigger a rollback.
+
+#### The `CancellationToken` API
+
+- `readonly isCancelled: boolean`: Returns `true` if the token has been cancelled.
+- `cancel(): void`: Triggers cancellation: sets `isCancelled` to `true`, executes all registered compensation tasks in reverse order, and throws a `"Cancelled"` error.
+- `check(): void`: Throws a `"Cancelled"` error if `isCancelled` is `true`.
+- `compensation(fn: () => void | Promise<void>): void`: Registers a task to be executed if `cancel()` is called.
+
+### Compensation Tasks
+
+Compensation tasks are "undo" operations. For example, if you create a record in a database, you might register a compensation task to delete it if the rest of the procedure fails.
+
+**Key Rule:** Compensations are executed in **reverse order** (LIFO). This ensures that the most recent action is undone first, mirroring the natural undo process of a complex transaction.
 
 ```typescript
-const errorHandlingMiddleware: Middleware = async (input, next, token) => {
+import { api, container, Handler } from 'procedo';
+
+const createUserProfile: Handler = async (input, token) => {
+  // 1. Create user in DB
+  const user = await db.users.create(input);
+  
+  // Register compensation to delete the user if subsequent steps fail
+  token.compensation(async () => {
+    await db.users.delete(user.id);
+    console.log(`Rollback: User ${user.id} removed`);
+  });
+
+  // 2. Assign initial permissions
+  await permissions.assign(user.id, ['base_user']);
+  
+  // Register compensation to revoke permissions
+  token.compensation(async () => {
+    await permissions.revokeAll(user.id);
+    console.log(`Rollback: Permissions revoked`);
+  });
+
+  // 3. Send welcome email (might fail)
+  try {
+    await email.sendWelcome(user.email);
+  } catch (err) {
+    // If the email fails and we consider it critical, we trigger the rollback
+    token.cancel(); 
+    // This will execute: 
+    //   1. Revoke permissions
+    //   2. Delete user
+    //   3. Throw "Cancelled"
+  }
+
+  return user;
+};
+```
+
+### Manual vs Automatic Cancellation
+
+By default, compensations only run if `token.cancel()` is called. You can use middleware to implement an "auto-rollback on any error" policy:
+
+```typescript
+const autoRollbackMiddleware: Middleware = async (input, next, token) => {
   try {
     return await next(input);
   } catch (error) {
-    console.error('Operation failed:', error);
-    // Perform compensation/rollback here
+    // If an error occurred and we haven't cancelled yet, trigger rollbacks
+    if (!token.isCancelled) {
+      try {
+        token.cancel();
+      } catch (cancelError) {
+        // We catch the "Cancelled" throw to re-throw the original error instead
+        // This keeps the original error stack but ensures rollbacks are done
+        throw error;
+      }
+    }
     throw error;
   }
 };
-
-const app = api(container())
-  .register('create_user')
-  .as<UserInput, User>()
-  .middleware(errorHandlingMiddleware)
-  .using(someHandler);
-
-try {
-  const user = await app.create_user(userData);
-  console.log('User created:', user);
-} catch (error) {
-  console.error('Failed to create user:', error);
-}
 ```
 
-## Cancellation
+### Checking for Cancellation
 
-All handlers receive a cancellation token:
+In long-running procedures or loops, it's good practice to periodically call `token.check()` to stop execution as soon as possible if the process was cancelled elsewhere.
 
 ```typescript
-import type { Handler } from 'procedo';
-
-const customHandler: Handler = async (input, token) => {
-  token.check(); // Throws if cancelled
-  
-  // Your logic here
-  const result = await someAsyncOperation();
-  
-  token.check(); // Check again
-  
-  return result;
+const batchProcess: Handler = async (items, token) => {
+  for (const item of items) {
+    token.check(); // Stops and throws if cancelled
+    await processItem(item);
+  }
 };
 ```
 
@@ -910,4 +873,4 @@ ISC
 
 ---
 
-**Keywords:** typescript, handler-factory, procedure-container, database-agnostic, dependency-injection, middleware, type-safe, fluent-api, snake-case, camelcase, naming-convention, proxy-pattern, immutable, cancellation-token
+**Keywords:** typescript, handler-factory, procedure-container, database-agnostic, dependency-injection, middleware, type-safe, fluent-api, snake-case, camelcase, naming-convention, proxy-pattern, immutable, cancellation-token, compensation-tasks, saga-pattern
