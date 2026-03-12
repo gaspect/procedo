@@ -1,5 +1,4 @@
-import { CancellationToken } from '../src/cancellation';
-import type { HandlerFactory } from '../src/types';
+import type { HandlerFactory, CancellationToken } from '../src';
 
 export function postgres(
     pool: any
@@ -7,8 +6,7 @@ export function postgres(
 
     return (procedureName: string) => {
 
-        return async (input: any, token: CancellationToken) => {
-            token.check();
+        return async (input: any, _: CancellationToken) => {
 
             const hasInput = input !== undefined && input !== null;
             const client = await pool.connect();
