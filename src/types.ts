@@ -19,16 +19,28 @@ export type HandlerFactory =
 
 export type Compensation = () => Promise<void> | void;
 
+export type CaseType = 'snake' | 'camel' | 'both';
 
-export type RegisterBuilder<T extends Record<string, any>, Name extends string, I, O> = {
-    using(factory: HandlerFactory): ContainerInstance<T & { [K in Name]: { input: I; output: O } }, true>;
-    middleware(mw: Middleware<I, O>): RegisterBuilder<T, Name, I, O>;
-} & ContainerInstance<T & { [K in Name]: { input: I; output: O } }, true>;
+export type SnakeToCamelCase<S extends string> = S extends `${infer T}_${infer U}`
+    ? `${T}${Capitalize<SnakeToCamelCase<U>>}`
+    : S;
 
-export type ContainerInstance<T extends Record<string, any>, HasDefault extends boolean = false> = {
-    /** @internal Phantom type carrier for generic inference — do not use at runtime */
+type ProtectedKeys = 'middleware' | 'using' | 'register' | 'execute' | '__$type' | 'then';
+
+export type AdapterMethods<T extends Record<string, any>> = {
+    [K in keyof T as K extends ProtectedKeys ? never : K]: (input?: T[K]['input']) => Promise<T[K]['output']>;
+};
+
+export type CamelCaseAdapterMethods<T extends Record<string, any>> = {
+    [K in keyof T as K extends string ? (SnakeToCamelCase<K> extends ProtectedKeys ? never : SnakeToCamelCase<K>) : never]: (input?: T[K]['input']) => Promise<T[K]['output']>;
+};
+
+export type CombinedAdapterMethods<T extends Record<string, any>> = AdapterMethods<T> & CamelCaseAdapterMethods<T>;
+
+export type ContainerInstance<T extends Record<string, any>, HasDefault extends boolean = false, Case extends CaseType = 'both'> = {
     readonly __$type: T;
-    using(factory: HandlerFactory): ContainerInstance<T, true>;
+    middleware(mw: Middleware<any, any>): ContainerInstance<T, HasDefault, Case>;
+    using(factory: HandlerFactory): ContainerInstance<T, true, Case>;
     execute<K extends keyof T>(
         name: K,
         input?: T[K]['input']
@@ -38,75 +50,21 @@ export type ContainerInstance<T extends Record<string, any>, HasDefault extends 
         input?: I
     ): Promise<O>;
 } & (HasDefault extends true ? {
-    register<Name extends string>(name: Name): RegisterBuilder<T, Name, any, any>;
-    register<I, O>(name: string): RegisterBuilder<T, string, I, O>
-} : {});
+    register<Name extends string>(name: Name): RegisterBuilder<T, Name, any, any, Case>;
+    register<I, O>(name: string): RegisterBuilder<T, string, I, O, Case>;
+} : {}) & (string extends keyof T ? {} : (
+    Case extends 'camel' ? CamelCaseAdapterMethods<T> : 
+    Case extends 'both' ? CombinedAdapterMethods<T> : 
+    AdapterMethods<T>
+));
 
-export type SnakeToCamelCase<S extends string> = S extends `${infer T}_${infer U}`
-    ? `${T}${Capitalize<SnakeToCamelCase<U>>}`
-    : S;
+export type RegisterBuilder<TBase extends Record<string, any>, Name extends string, I, O, Case extends CaseType = 'both'> = {
+    using(factory: HandlerFactory): ContainerInstance<TBase & { [K in Name]: { input: I; output: O } }, true, Case>;
+    middleware<I2, O2>(mw: Middleware<I2, O2, I, O>): RegisterBuilder<TBase, Name, I2, O2, Case>;
+} & ContainerInstance<TBase & { [K in Name]: { input: I; output: O } }, true, Case>;
 
-export type CamelCaseAdapterMethods<T extends Record<string, any>> = {
-    [K in keyof T as K extends string ? SnakeToCamelCase<K> : K]: (input?: T[K]['input']) => Promise<T[K]['output']>;
-};
+// ── Compatibility & Universal ───────────────────────────────────────────
 
+export type TypedContainer<T extends Record<string, any>, HasDefault extends boolean = false> = ContainerInstance<T, HasDefault, 'both'>;
 
-// ── CamelCaseTypedContainer (jscriptify) ────────────────────────────
-
-export type CamelCaseTypedContainer<T extends Record<string, any>, HasDefault extends boolean = false> = {
-    readonly __$type: T;
-    middleware(mw: Middleware<any, any>): CamelCaseTypedContainer<T, HasDefault>;
-    using(factory: HandlerFactory): CamelCaseTypedContainer<T, true>;
-} & (HasDefault extends true ? CamelCaseAdapterMethods<T> & {
-    register<Name extends string>(name: Name): CamelCaseRegisterBuilderWithTypes<T, Name, any, any, true>;
-    register<I, O>(name: string): CamelCaseRegisterBuilderWithTypes<T, string, I, O, true>;
-    execute<K extends keyof T>(
-        name: K,
-        input?: T[K]['input']
-    ): Promise<T[K]['output']>;
-    execute<I = any, O = any>(
-        name: string,
-        input?: I
-    ): Promise<O>;
-} : {});
-
-// ── Register builder types ──────────────────────────────────────────
-
-export type RegisterBuilderWithTypes<TBase extends Record<string, any>, Name extends string, I, O, HasDefault extends boolean = false> = {
-    using(factory: HandlerFactory): TypedContainer<TBase & { [K in Name]: { input: I; output: O } }, true>;
-    middleware<I2, O2>(mw: Middleware<I2, O2, I, O>): RegisterBuilderWithTypes<TBase, Name, I2, O2, HasDefault>;
-} & (HasDefault extends true ? TypedContainer<TBase & { [K in Name]: { input: I; output: O } }, true> : {});
-
-type CamelCaseRegisterBuilderWithTypes<TBase extends Record<string, any>, Name extends string, I, O, HasDefault extends boolean = false> = {
-    using(factory: HandlerFactory): CamelCaseTypedContainer<TBase & { [K in Name]: { input: I; output: O } }, true>;
-    middleware<I2, O2>(mw: Middleware<I2, O2, I, O>): CamelCaseRegisterBuilderWithTypes<TBase, Name, I2, O2, HasDefault>;
-} & (HasDefault extends true ? CamelCaseTypedContainer<TBase & { [K in Name]: { input: I; output: O } }, true> : {});
-
-
-// ── Adapter method maps ─────────────────────────────────────────────
-
-export type AdapterMethods<T extends Record<string, any>> = {
-    [K in keyof T]: (input?: T[K]['input']) => Promise<T[K]['output']>;
-};
-
-// ── TypedContainer (api) ────────────────────────────────────────────
-
-export  type TypedContainer<T extends Record<string, any>, HasDefault extends boolean = false> = {
-    readonly __$type: T;
-    middleware(mw: Middleware<any, any>): TypedContainer<T, HasDefault>;
-    using(factory: HandlerFactory): TypedContainer<T, true>;
-} & (HasDefault extends true ? AdapterMethods<T> & {
-    register<Name extends string>(name: Name): RegisterBuilderWithTypes<T, Name, any, any, true>;
-    register<I, O>(name: string): RegisterBuilderWithTypes<T, string, I, O, true>;
-    execute<K extends keyof T>(
-        name: K,
-        input?: T[K]['input']
-    ): Promise<T[K]['output']>;
-    execute<I = any, O = any>(
-        name: string,
-        input?: I
-    ): Promise<O>;
-} : {});
-
-
-export type Container = ContainerInstance<any, true> | CamelCaseTypedContainer<any, true> | TypedContainer<any, true>
+export type Container = ContainerInstance<any, true, any> & { [K: string]: any };

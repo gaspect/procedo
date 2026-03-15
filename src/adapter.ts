@@ -1,4 +1,4 @@
-import type {Middleware, HandlerFactory, TypedContainer, CamelCaseTypedContainer} from './types';
+import type {Middleware, HandlerFactory, TypedContainer, ContainerInstance} from './types';
 
 // Inline compose: chains middlewares in onion-pattern (no external compound needed)
 function compose(...middlewares: Middleware<any, any, any, any>[]): Middleware<any, any, any, any> {
@@ -11,8 +11,12 @@ function compose(...middlewares: Middleware<any, any, any, any>[]): Middleware<a
     };
 }
 
-export function api<T extends Record<string, any>, HasDefault extends boolean = false>(
-    source: any,
+function camelToSnake(str: string): string {
+    return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
+}
+
+export function api<T extends Record<string, any>, HasDefault extends boolean>(
+    source: ContainerInstance<T, HasDefault>,
     globalMiddleware: Middleware<any, any>[] = [],
     globalFactory?: HandlerFactory
 ): TypedContainer<T, HasDefault> {
@@ -29,9 +33,9 @@ export function api<T extends Record<string, any>, HasDefault extends boolean = 
         base.execute = source.execute.bind(source);
     }
 
-    if (source.register) {
+    if ((source as any).register) {
         base.register = (name: string) => {
-            const builder = source.register(name);
+            const builder = (source as any).register(name);
 
             const wrapBuilder = (b: any, mws: any[]): any => {
                 const chain = {
@@ -77,78 +81,15 @@ export function api<T extends Record<string, any>, HasDefault extends boolean = 
             if (name === 'then' || name === 'register' || name === 'execute' || name === 'using' || name === 'middleware')
                 return undefined;
 
-            return (input?: any) => source.execute(name, input);
-        }
-    }) as TypedContainer<T, HasDefault>;
-}
-
-
-
-function camelToSnake(str: string): string {
-    return str.replaceAll(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
-}
-
-export function jscriptify<T extends Record<string, any>, HasDefault extends boolean = false>(
-    container: TypedContainer<T, HasDefault>
-): CamelCaseTypedContainer<T, HasDefault> {
-    const base: any = {
-        middleware: (mw: Middleware<any, any>) => {
-            return jscriptify(container.middleware(mw));
-        },
-        using: (factory: HandlerFactory) => {
-            return jscriptify(container.using(factory));
-        },
-    };
-
-    if ((container as any).execute) {
-        base.execute = (container as any).execute.bind(container);
-    }
-
-    if ((container as any).register) {
-        base.register = (name: string) => {
-            const builder = (container as any).register(name);
-
-            const wrapBuilder = (b: any): any => {
-                const inner = {
-                    using: (factory: HandlerFactory) => {
-                        return jscriptify(b.using(factory));
-                    },
-                    middleware: (mw: any) => wrapBuilder(b.middleware(mw))
-                };
-
-                return new Proxy(inner, {
-                    get(target, prop: string) {
-                        if (prop in target) return (target as any)[prop];
-
-                        const wrapped = jscriptify(b);
-                        return (wrapped as any)[prop];
-                    }
-                });
-            };
-
-            return wrapBuilder(builder);
-        };
-    }
-
-    return new Proxy(base, {
-        get(target, prop: string) {
-            if (prop in target) {
-                return (target as any)[prop];
-            }
-
-            if (prop === '__$type') return (container as any).__$type;
-            if (prop === 'then' || prop === 'register' || prop === 'execute' || prop === 'using' || prop === 'middleware')
-                return undefined;
-
-            const snakeCaseName = camelToSnake(prop);
+            const snakeCaseName = camelToSnake(name);
 
             return async (input?: any) => {
                 try {
-                    return await (container as any).execute(snakeCaseName, input);
+                    return await source.execute(snakeCaseName, input);
                 } catch (error) {
-                    if (snakeCaseName !== prop) {
+                    if (snakeCaseName !== name) {
                         try {
-                            return await (container as any).execute(prop, input);
+                            return await source.execute(name, input);
                         } catch {
                             throw error;
                         }
@@ -157,6 +98,7 @@ export function jscriptify<T extends Record<string, any>, HasDefault extends boo
                 }
             };
         }
-    }) as CamelCaseTypedContainer<T, HasDefault>;
+    }) as TypedContainer<T, HasDefault>;
 }
+
 

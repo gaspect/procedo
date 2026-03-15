@@ -10,7 +10,7 @@ A type-safe, fluent TypeScript container for executing procedures and handlers w
 - ⚡ **Proxy Pattern**: Access procedures as properties: `app.procedureName()`
 - 🎭 **Immutable Containers**: Each registration returns a new typed container
 - ⛔ **Cancellation & Compensations**: Built-in support for Saga-like rollback tasks
-- 🐫 **CamelCase Converter**: Access snake_case procedures with camelCase via `jscriptify()`
+- 🐫 **CamelCase Support**: Access snake_case procedures with camelCase directly (native support)
 - 🗃️ **Database Agnostic**: Works with any database or handler implementation
 
 ## Installation
@@ -107,27 +107,21 @@ console.log(migrations[0]?.description);
 
 ### Working with Different Naming Conventions
 
-Use `jscriptify()` to access procedures with camelCase syntax, regardless of how they're registered:
+The `api()` adapter automatically supports both the registered procedure name and its camelCase version. This is especially useful when working with databases that use snake_case:
 
 ```typescript
-import { jscriptify } from 'procedo';
-
 // Works with snake_case procedures (common in databases)
 const app = api(container())
   .using(someHandler)
   .register<void, Migration[]>('get_migration_history');
 
-// Access with camelCase
-const jsApi = jscriptify(app);
-const history = await jsApi.getMigrationHistory();
+// Access with original name
+const history1 = await app.get_migration_history();
 
-// Also works if procedures are registered in camelCase
-const app2 = api(container())
-  .using(someHandler)
-  .register<number, Profile>('getUserProfile');
+// OR access with camelCase (native support)
+const history2 = await app.getMigrationHistory();
 
-const jsApi2 = jscriptify(app2);
-const profile = await jsApi2.getUserProfile(123);  // Works!
+// Both work and are fully type-safe!
 ```
 
 ## Core Concepts
@@ -187,6 +181,11 @@ Creates a new immutable container instance.
 
 Wraps a container with a Proxy to enable property-based access and provides global configuration methods.
 
+**Features:**
+- Supports both registered names (`snake_case`) and `camelCase` for accessing procedures.
+- When calling a `camelCase` method, it first tries the `snake_case` version, then the original name.
+- Fully type-safe: both name versions are inferred automatically in TypeScript.
+
 **Methods:**
 - `.using(factory)` - Sets the default handler factory
 - `.middleware(mw)` - Adds a global middleware layer
@@ -201,52 +200,6 @@ const app = api(container())
 
 const users = await app.get_users();
 ```
-
-### `jscriptify<T>(container: TypedContainer<T>)`
-
-Converts a container to allow accessing procedures with camelCase property names. Works intelligently with both snake_case and camelCase procedure names.
-
-**Features:**
-- Automatically tries snake_case first (common in databases), then camelCase
-- Full TypeScript support with type-level conversion
-- Preserves input/output types
-- Maintains autocomplete and type safety
-- Works regardless of how procedures are registered
-
-**How it works:**
-When you call `jsApi.getUserOrders()`, it will:
-1. First try to execute `get_user_orders` (snake_case conversion)
-2. If that fails, try `getUserOrders` (original camelCase)
-3. This means it works whether procedures are registered as `get_user_orders` or `getUserOrders`
-
-**Example with snake_case procedures:**
-```typescript
-const app = api(container())
-  .register<number, Order[]>('get_user_orders')
-  .using(someHandler);
-
-const jsApi = jscriptify(app);
-
-// Access with camelCase - converts to 'get_user_orders' automatically
-const orders = await jsApi.getUserOrders(userId);
-```
-
-**Example with camelCase procedures:**
-```typescript
-const app = api(container())
-  .register<number, Order[]>('getUserOrders')
-  .using(someHandler);
-
-const jsApi = jscriptify(app);
-
-// Works the same way
-const orders = await jsApi.getUserOrders(userId);
-```
-
-**Type Conversion Examples:**
-- `list_migration_history` → `listMigrationHistory`
-- `get_user_data` → `getUserData`
-- `create_new_order` → `createNewOrder`
 
 ### Handler Factories
 
@@ -664,10 +617,9 @@ const allUsers = await app.get_users();
 const user = await app.get_user(1);
 const newUser = await app.create_user({ name: 'John', email: 'john@example.com' });
 
-// Or use jscriptify for camelCase access (if procedures use snake_case)
-const jsApi = jscriptify(app);
-const allUsers2 = await jsApi.getUsers();
-const user2 = await jsApi.getUser(1);
+// Or use camelCase directly (native support)
+const allUsers2 = await app.getUsers();
+const user2 = await app.getUser(1);
 ```
 
 ### Using with Default Factory
@@ -698,7 +650,7 @@ const result = await app.get_user(1);
 console.log(result.name); // ✅ Type-safe
 ```
 
-### CamelCase Conversion with jscriptify
+### Native CamelCase Support
 
 ```typescript
 // Your procedures use snake_case (common in databases)
@@ -708,15 +660,12 @@ const app = api(container())
   .register<void, Order[]>('list_active_orders')
   .register<SettingsInput, Settings>('update_user_settings');
 
-// Convert to JavaScript/TypeScript naming convention
-const jsApi = jscriptify(app);
+// Access directly with camelCase - fully type-safe!
+const profile = await app.getUserProfile(123);
+const orders = await app.listActiveOrders();
+const settings = await app.updateUserSettings({ theme: 'dark' });
 
-// Now use camelCase - fully type-safe!
-const profile = await jsApi.getUserProfile(123);
-const orders = await jsApi.listActiveOrders();
-const settings = await jsApi.updateUserSettings({ theme: 'dark' });
-
-// ✅ TypeScript autocomplete works
+// ✅ TypeScript autocomplete works for both versions
 // ✅ Input/output types are preserved
 // ✅ Compile-time errors for typos
 console.log(profile.name); // ✅ Type-safe

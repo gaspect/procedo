@@ -9,7 +9,7 @@ export function token(): CancellationToken {
         cancel() {
             if (_cancelled) return;
             _cancelled = true;
-            for (const fn of compensations.toReversed()) {
+            for (const fn of [...compensations].reverse()) {
                 try {
                     fn();
                 } catch (e) {

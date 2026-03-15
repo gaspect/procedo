@@ -18,12 +18,14 @@ export function container(): ContainerInstance<{}, false>;
 
 export function container<T extends Record<string, any> = {}, HasDefault extends boolean = false>(
     registry?: Map<string, any>,
-    defaultFactory?: HandlerFactory
+    defaultFactory?: HandlerFactory,
+    globalMiddlewares?: Middleware<any, any>[]
 ): ContainerInstance<T, HasDefault>;
 
 export function container<T extends Record<string, any> = {}, HasDefault extends boolean = false>(
     registry = new Map<string, any>(),
-    defaultFactory?: HandlerFactory
+    defaultFactory?: HandlerFactory,
+    globalMiddlewares: Middleware<any, any>[] = []
 ): ContainerInstance<T, HasDefault> {
 
     function execute<K extends keyof T>(
@@ -39,6 +41,16 @@ export function container<T extends Record<string, any> = {}, HasDefault extends
     async function execute(name: string, input?: any): Promise<any> {
         const proc = registry.get(name);
         if (!proc) throw new Error('not found');
+        
+        if (globalMiddlewares.length > 0) {
+            const t = token();
+            const dispatch = (index: number, currentInput: any): Promise<any> => {
+                if (index === globalMiddlewares.length) return proc(currentInput);
+                return globalMiddlewares[index](currentInput, (nextInput: any) => dispatch(index + 1, nextInput), t);
+            };
+            return dispatch(0, input);
+        }
+
         return proc(input);
     }
 
@@ -54,12 +66,15 @@ export function container<T extends Record<string, any> = {}, HasDefault extends
 
         type NewT = T & { [K in Name]: { input: I; output: O } };
 
-        return container<NewT, true>(newRegistry, factory);
+        return container<NewT, true>(newRegistry, factory, globalMiddlewares);
     }
 
     const self: any = {
         using: (factory: HandlerFactory) => {
-            return container<T, true>(registry, factory);
+            return container<T, true>(registry, factory, globalMiddlewares);
+        },
+        middleware: (mw: Middleware<any, any>) => {
+            return container<T, HasDefault>(registry, defaultFactory, [...globalMiddlewares, mw]);
         },
         execute
     };
