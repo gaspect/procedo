@@ -1,41 +1,30 @@
-import type { Middleware, HandlerFactory } from './types';
-import { token } from './cancellation';
+import type {Middleware, HandlerFactory, ContainerInstance} from './types';
+import {token} from './cancellation';
 
-function compose(factory: HandlerFactory, mw: Middleware<any, any>, name: string) {
+function compose(factory: HandlerFactory, mws: Middleware<any, any>[], name: string) {
     const handler = factory(name);
 
     return async (input: any) => {
         const t = token();
-        return mw(input, (next) => handler(next, t), t);
+        const dispatch = (index: number, currentInput: any): Promise<any> => {
+            if (index === mws.length) return handler(currentInput, t);
+            return mws[index](currentInput, (nextInput: any) => dispatch(index + 1, nextInput), t);
+        };
+        return dispatch(0, input);
     };
 }
 
-type RegisterBuilder<T extends Record<string, any>, Name extends string, I, O> = {
-    using(factory: HandlerFactory): ContainerInstance<T & { [K in Name]: { input: I; output: O } }>;
-    middleware(mw: Middleware<I, O>): RegisterBuilder<T, Name, I, O>;
-};
+export function container(): ContainerInstance<{}, false>;
 
-type ContainerInstance<T extends Record<string, any>> = {
-    /** @internal Phantom type carrier for generic inference — do not use at runtime */
-    readonly __$type: T;
+export function container<T extends Record<string, any> = {}, HasDefault extends boolean = false>(
+    registry?: Map<string, any>,
+    defaultFactory?: HandlerFactory
+): ContainerInstance<T, HasDefault>;
 
-    register<Name extends string>(name: Name): RegisterBuilder<T, Name, any, any>;
-    register<I, O>(name: string): RegisterBuilder<T, string, I, O>;
-
-    execute<K extends keyof T>(
-        name: K,
-        input?: T[K]['input']
-    ): Promise<T[K]['output']>;
-
-    execute<I = any, O = any>(
-        name: string,
-        input?: I
-    ): Promise<O>;
-};
-
-export function container<T extends Record<string, any> = {}>(
-    registry = new Map<string, any>()
-): ContainerInstance<T> {
+export function container<T extends Record<string, any> = {}, HasDefault extends boolean = false>(
+    registry = new Map<string, any>(),
+    defaultFactory?: HandlerFactory
+): ContainerInstance<T, HasDefault> {
 
     function execute<K extends keyof T>(
         name: K,
@@ -56,31 +45,45 @@ export function container<T extends Record<string, any> = {}>(
     function _doRegister<I, O, Name extends string>(
         name: Name,
         factory: HandlerFactory,
-        mw: Middleware<I, O> = async (input, next) => next(input)
+        mws: Middleware<any, any>[] = []
     ) {
-        const procedure = compose(factory, mw, name);
+        const procedure = compose(factory, mws, name);
 
         const newRegistry = new Map(registry);
         newRegistry.set(name, procedure);
 
         type NewT = T & { [K in Name]: { input: I; output: O } };
 
-        return container<NewT>(newRegistry);
+        return container<NewT, true>(newRegistry, factory);
     }
 
-    return {
-        register: <Name extends string>(name: Name) => ({
-            using: (factory: HandlerFactory) => {
-                return _doRegister<any, any, Name>(name, factory);
-            },
-            middleware: (mw: Middleware<any, any>) => ({
-                using: (factory: HandlerFactory) => {
-                    return _doRegister<any, any, Name>(name, factory, mw);
-                },
-                middleware: () => { throw new Error('Middleware chaining at container level is not supported. Use api() adapter for chaining.'); }
-            })
-        }),
-
+    const self: any = {
+        using: (factory: HandlerFactory) => {
+            return container<T, true>(registry, factory);
+        },
         execute
-    } as unknown as ContainerInstance<T>;
+    };
+
+    if (defaultFactory) {
+        self.register = <Name extends string>(name: Name) => {
+            const createBuilder = (mws: Middleware<any, any>[] = []) => {
+                const builder = {
+                    using: (factory: HandlerFactory) => {
+                        return _doRegister<any, any, Name>(name, factory, mws);
+                    },
+                    middleware: (mw: Middleware<any, any>) => {
+                        return createBuilder([...mws, mw]);
+                    }
+                };
+
+                const chain = _doRegister<any, any, Name>(name, defaultFactory, mws);
+                return Object.assign(chain, builder);
+            };
+
+            return createBuilder();
+        };
+        self.execute = execute;
+    }
+
+    return self as unknown as ContainerInstance<T, HasDefault>;
 }

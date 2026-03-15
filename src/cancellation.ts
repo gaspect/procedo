@@ -1,11 +1,4 @@
-import { Compensation } from "./types";
-
-export interface CancellationToken {
-    readonly isCancelled: boolean;
-    cancel(): void;
-    check(): void;
-    compensation(fn: Compensation): void;
-}
+import { Compensation, CancellationToken } from "./types";
 
 export function token(): CancellationToken {
     const compensations: Compensation[] = [];
@@ -24,9 +17,6 @@ export function token(): CancellationToken {
                 }
             }
             throw new Error('Cancelled');
-        },
-        check() {
-            if (_cancelled) throw new Error('Cancelled');
         },
         compensation(fn: Compensation) {
             compensations.push(fn);
