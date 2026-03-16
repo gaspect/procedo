@@ -59,7 +59,7 @@ export function container<T extends Record<string, any> = {}, HasDefault extends
         factory: HandlerFactory,
         mws: Middleware<any, any>[] = []
     ) {
-        const procedure = compose(factory, mws, name);
+        const procedure = compose(factory, [...mws].reverse(), name);
 
         const newRegistry = new Map(registry);
         newRegistry.set(name, procedure);

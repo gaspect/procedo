@@ -40,7 +40,7 @@ export function api<T extends Record<string, any>, HasDefault extends boolean>(
             const wrapBuilder = (b: any, mws: any[]): any => {
                 const chain = {
                     using: (factory: HandlerFactory) => {
-                        const allMiddlewares = [...globalMiddleware, ...mws];
+                        const allMiddlewares = [...globalMiddleware, ...[...mws].reverse()];
                         let mwBuilder = b;
                         if (allMiddlewares.length > 0) {
                             const composed = allMiddlewares.length === 1
@@ -58,7 +58,7 @@ export function api<T extends Record<string, any>, HasDefault extends boolean>(
                     get(target, prop: string) {
                         if (prop in target) return (target as any)[prop];
                         
-                        if (globalFactory && prop !== 'execute' && prop !== 'register') {
+                        if (globalFactory) {
                             return (chain.using(globalFactory) as any)[prop];
                         }
 

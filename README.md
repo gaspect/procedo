@@ -791,7 +791,7 @@ const autoRollbackMiddleware: Middleware = async (input, next, token) => {
 };
 ```
 
-## Building
+## Building & Testing
 
 ```bash
 # Install dependencies
@@ -799,6 +799,9 @@ pnpm install
 
 # Build the project
 pnpm build
+
+# Run tests
+pnpm test
 
 # Watch mode for development
 pnpm dev
@@ -824,7 +827,13 @@ ISC
 
 ## Changelog
 
-### v2.0.0
+### v2.0.1 (2026-03-16)
+- **Middleware Execution Order Fixed**: Middleware layers now follow the correct onion pattern (outermost to innermost) when using the fluent `.middleware()` API, matching the documented "innermost-first" registration requirement.
+- **Chained Registration Support**: Fixed a bug where multiple `.register()` calls couldn't be chained directly when using a default handler factory.
+- **Improved CancellationToken Compatibility**: Replaced `toReversed()` with `[...arr].reverse()` for broader environment support.
+- **Enhanced Test Suite**: Migrated to `vitest` and added comprehensive tests covering middleware ordering, cancellation, and container behavior.
+
+### v2.0.0 (2026-03-15)
 - **Native camelCase support**: Procedures registered in `snake_case` can now be accessed directly using `camelCase` through the `api()` adapter with full type safety.
 - **Removed `jscriptify`**: Consolidating the API by removing the redundant `jscriptify` utility in favor of built-in native support.
 - **Middleware Type Inference**: Significant improvements to TypeScript inference when chaining multiple middlewares with input/output transformations.
