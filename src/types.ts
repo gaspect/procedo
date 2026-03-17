@@ -52,11 +52,11 @@ export type ContainerInstance<T extends Record<string, any>, HasDefault extends 
 } & (HasDefault extends true ? {
     register<Name extends string>(name: Name): RegisterBuilder<T, Name, any, any, Case>;
     register<I, O>(name: string): RegisterBuilder<T, string, I, O, Case>;
-} : {}) & (string extends keyof T ? {} : (
+} : {}) & (
     Case extends 'camel' ? CamelCaseAdapterMethods<T> : 
     Case extends 'both' ? CombinedAdapterMethods<T> : 
     AdapterMethods<T>
-));
+);
 
 export type RegisterBuilder<TBase extends Record<string, any>, Name extends string, I, O, Case extends CaseType = 'both'> = {
     using(factory: HandlerFactory): ContainerInstance<TBase & { [K in Name]: { input: I; output: O } }, true, Case>;
@@ -67,4 +67,10 @@ export type RegisterBuilder<TBase extends Record<string, any>, Name extends stri
 
 export type TypedContainer<T extends Record<string, any>, HasDefault extends boolean = false> = ContainerInstance<T, HasDefault, 'both'>;
 
-export type Container = ContainerInstance<any, true, any> & { [K: string]: any };
+export type Container<
+    T extends Record<string, any> = any,
+    HasDefault extends boolean = true,
+    Case extends CaseType = 'both'
+> = ContainerInstance<T, HasDefault, Case>;
+
+export type UnsafeContainer = Container<any, true, any> & { [K: string]: any };
