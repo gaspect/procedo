@@ -68,7 +68,7 @@ export type RegisterBuilder<TBase extends Record<string, any>, Name extends stri
 export type TypedContainer<T extends Record<string, any>, HasDefault extends boolean = false> = ContainerInstance<T, HasDefault, 'both'>;
 
 export type Container<
-    T extends Record<string, any> = any,
+    T extends Record<string, any> = {},
     HasDefault extends boolean = true,
     Case extends CaseType = 'both'
 > = ContainerInstance<T, HasDefault, Case>;

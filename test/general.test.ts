@@ -12,17 +12,15 @@ describe("Api types with parameters", () => {
 
 
     function decorator(_c: Container) {
-
-        let temp = _c
+        return _c
             .register<unknown, string>('testing_snake')
             .middleware(async (i, next,) => next(i))
-
-        return temp.testingSnake()
+            .testingSnake;
     }
 
     it('should return testing without error types', async () => {
-        let r2 = await decorator(c);
-        expect(r2).equal('testing_snake');
+        let r2 = await decorator(c)();
+        expect(r2).toEqual('testing_snake');
     });
 })
 
