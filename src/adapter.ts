@@ -51,7 +51,8 @@ export function api<T extends Record<string, any>, HasDefault extends boolean>(
                         const nextSource = mwBuilder.using(factory);
                         return api(nextSource, globalMiddleware, globalFactory);
                     },
-                    middleware: (mw: any) => wrapBuilder(b, [...mws, mw])
+                    middleware: (mw: any) => wrapBuilder(b, [...mws, mw]),
+                    typed: () => wrapBuilder(b, mws)
                 };
 
                 return new Proxy(chain, {

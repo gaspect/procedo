@@ -88,6 +88,9 @@ export function container<T extends Record<string, any> = {}, HasDefault extends
                     },
                     middleware: (mw: Middleware<any, any>) => {
                         return createBuilder([...mws, mw]);
+                    },
+                    typed: () => {
+                        return createBuilder(mws);
                     }
                 };
 

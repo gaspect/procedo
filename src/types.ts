@@ -50,6 +50,7 @@ export type ContainerInstance<T extends Record<string, any>, HasDefault extends 
         input?: I
     ): Promise<O>;
 } & (HasDefault extends true ? {
+    register<Name extends string, I, O>(name: Name): RegisterBuilder<T, Name, I, O, Case>;
     register<Name extends string>(name: Name): RegisterBuilder<T, Name, any, any, Case>;
     register<I, O>(name: string): RegisterBuilder<T, string, I, O, Case>;
 } : {}) & (
@@ -61,6 +62,7 @@ export type ContainerInstance<T extends Record<string, any>, HasDefault extends 
 export type RegisterBuilder<TBase extends Record<string, any>, Name extends string, I, O, Case extends CaseType = 'both'> = {
     using(factory: HandlerFactory): ContainerInstance<TBase & { [K in Name]: { input: I; output: O } }, true, Case>;
     middleware<I2, O2>(mw: Middleware<I2, O2, I, O>): RegisterBuilder<TBase, Name, I2, O2, Case>;
+    typed<I2, O2>(): RegisterBuilder<TBase, Name, I2, O2, Case>;
 } & ContainerInstance<TBase & { [K in Name]: { input: I; output: O } }, true, Case>;
 
 // ── Compatibility & Universal ───────────────────────────────────────────
